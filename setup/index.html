@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Поиск Яндекса в адресной строке — WebFinder</title>
+<style>
+  :root {
+    --bg: #f7f7f8; --card: #ffffff; --text: #1a1a1c; --muted: #6b6b73;
+    --line: #e3e3e8; --accent: #3b5bdb; --ok: #1a7f4b; --code: #f2f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --card: #202024; --text: #ececf0; --muted: #9a9aa4;
+      --line: #33333a; --accent: #7b93f5; --ok: #4ac585; --code: #2a2a30;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 20px 80px;
+    background: var(--bg); color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 27px; line-height: 1.25; margin: 0 0 10px; letter-spacing: -0.015em; }
+  .lead { color: var(--muted); margin: 0 0 14px; }
+  .vid { margin: 0 0 36px; font-size: 15px; color: var(--muted); }
+  .vid b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .step {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 22px 24px; margin: 0 0 16px;
+  }
+  .step h2 {
+    font-size: 17px; margin: 0 0 10px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .step h2 span {
+    flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 600; line-height: 24px; text-align: center;
+    align-self: center;
+  }
+  .step p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .step p:last-child { margin-bottom: 0; }
+
+  .copy { display: flex; gap: 8px; align-items: stretch; margin: 12px 0; }
+  .copy code {
+    flex: 1 1 auto; min-width: 0;
+    background: var(--code); border-radius: 8px; padding: 10px 12px;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    word-break: break-all;
+  }
+  .copy button {
+    flex: 0 0 auto; padding: 0 18px; font-size: 14px; font-weight: 500;
+    color: #fff; background: var(--accent); border: 0; border-radius: 8px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .copy button:hover { filter: brightness(1.08); }
+  .copy button.done { background: var(--ok); }
+
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 0; font-size: 15px; }
+  td { padding: 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--muted); width: 42%; padding-right: 14px; }
+  tr:first-child td { border-top: 0; }
+  td code { background: var(--code); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+
+  .note {
+    margin-top: 32px; padding-top: 26px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 15px;
+  }
+  .note h2 { font-size: 16px; color: var(--text); margin: 0 0 8px; }
+  .note p { margin: 0 0 14px; }
+  .note a { color: var(--accent); }
+  .note code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Поиск Яндекса в адресной строке</h1>
+  <p class="lead">
+    Браузер умеет искать через любую поисковую систему — нужно один раз добавить
+    её в настройках. Это занимает минуту и делается полностью вручную, ничего
+    устанавливать не нужно.
+  </p>
+  <p class="vid" id="vidline"></p>
+
+  <div class="step">
+    <h2><span>1</span> Скопируйте адрес поиска</h2>
+    <div class="copy">
+      <code id="url"></code>
+      <button type="button" data-copy="url">Копировать</button>
+    </div>
+  </div>
+
+  <div class="step">
+    <h2><span>2</span> Откройте настройки поисковых систем</h2>
+    <p id="settings-hint">
+      Перейти туда по ссылке нельзя — внутренние страницы браузера не
+      открываются с сайтов. Скопируйте адрес, вставьте в адресную строку и
+      нажмите Enter.
+    </p>
+    <div class="copy">
+      <code id="settings"></code>
+      <button type="button" data-copy="settings">Копировать</button>
+    </div>
+  </div>
+
+  <div class="step">
+    <h2><span>3</span> Нажмите «Добавить» и заполните три поля</h2>
+    <table>
+      <tr><td>Название</td><td><code>Яндекс</code></td></tr>
+      <tr><td>Быстрая команда</td><td><code>ya</code></td></tr>
+      <tr><td>URL с параметром вместо запроса</td><td>адрес из первого шага</td></tr>
+    </table>
+  </div>
+
+  <div class="step">
+    <h2><span>4</span> Сделайте его поиском по умолчанию</h2>
+    <p>
+      У добавленной строки откройте меню из трёх точек и выберите «Сделать
+      поисковой системой по умолчанию». Готово: теперь запросы из адресной
+      строки открываются в Яндексе.
+    </p>
+  </div>
+
+  <div class="note">
+    <h2>Как вернуть прежний поиск</h2>
+    <p>
+      На той же странице настроек: у прежней поисковой системы выберите «Сделать
+      поисковой системой по умолчанию», а добавленную строку удалите через то же
+      меню из трёх точек.
+    </p>
+    <p>
+      Это обычная настройка вашего браузера, и держится она сама по себе — её
+      не ставит и не снимает никакая программа. Поменять или убрать её можно
+      когда угодно, тем же способом, которым добавили.
+    </p>
+
+    <h2>Что это за адрес</h2>
+    <p>
+      Это обычная ссылка на поиск Яндекса. Параметр <code>clid</code> в ней —
+      партнёрский идентификатор: Яндекс по нему видит, что переход пришёл от
+      нас, и выплачивает вознаграждение. На результаты поиска, их состав и
+      порядок это не влияет, и дополнительной платы для вас не возникает.
+    </p>
+    <p>
+      Эта страница ничего не собирает и никуда ничего не отправляет: адрес
+      собирается прямо в браузере. <a href="../privacy/search/">Политика
+      конфиденциальности</a>
+    </p>
+  </div>
+</main>
+
+<script>
+  const BASE_CLID = '15428440';
+
+  // Код канала приходит в адресе: ?vid=5. Нормализуем так же, как расширение:
+  // число от 1 до 99, ведущие нули отбрасываем, 0 и пустое значение — без кода.
+  function readVid() {
+    const raw = (new URLSearchParams(location.search).get('vid') || '').trim();
+    if (!/^\d{1,2}$/.test(raw)) return '';
+    const n = Number(raw);
+    return n >= 1 && n <= 99 ? String(n) : '';
+  }
+
+  const vid  = readVid();
+  const clid = vid ? BASE_CLID + '-' + vid : BASE_CLID;
+
+  document.getElementById('url').textContent =
+    'https://ya.ru/search/?clid=' + clid + '&text=%s';
+
+  document.getElementById('vidline').innerHTML = vid
+    ? 'Код подключения: <b>' + vid + '</b> — он уже вшит в адрес ниже.'
+    : 'Код подключения не задан — адрес ниже работает и без него.';
+
+  // Путь к настройкам у каждого браузера свой, а определить браузер можно
+  // только по userAgent: порядок проверок важен, Яндекс.Браузер и Opera
+  // представляются Chrome с дополнительной меткой.
+  const ua = navigator.userAgent;
+  const scheme =
+    /YaBrowser/i.test(ua)        ? 'browser' :
+    /OPR\/|Opera/i.test(ua)      ? 'opera'   :
+    /Edg\//i.test(ua)            ? 'edge'    : 'chrome';
+
+  document.getElementById('settings').textContent =
+    scheme + '://settings/searchEngines';
+
+  document.querySelectorAll('button[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = document.getElementById(btn.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        // Буфер недоступен (старый браузер, страница без https) — выделяем
+        // текст, чтобы скопировать вручную.
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById(btn.dataset.copy));
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return;
+      }
+      const was = btn.textContent;
+      btn.textContent = 'Скопировано';
+      btn.classList.add('done');
+      setTimeout(() => { btn.textContent = was; btn.classList.remove('done'); }, 1600);
+    });
+  });
+</script>
+</body>
+</html>
