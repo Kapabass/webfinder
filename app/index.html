@@ -25,7 +25,9 @@
 // в нём лежит start_url, и именно он вшивается в иконку при установке. Решим
 // код канала позже — иконка уедет на домашний экран без него.
 window.WF = (function () {
+  var BASE_CLID = '15428440';
   var KEY = 'wf_vid';
+  var ASKED = 'wf_asked';
 
   // Правила те же, что в расширении и на странице ручной настройки:
   // число 1–99, ведущие нули отбрасываем, 0 и мусор — считаем, что кода нет.
@@ -37,19 +39,14 @@ window.WF = (function () {
   }
 
   // Приватный режим Safari умеет бросать прямо на чтении localStorage.
-  function stored() {
-    try { return normalizeVid(localStorage.getItem(KEY)); } catch (e) { return ''; }
+  function read(key) {
+    try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
   }
-  function remember(vid) {
-    try { localStorage.setItem(KEY, vid); } catch (e) {}
+  function write(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
   }
 
-  var fromUrl = normalizeVid(new URLSearchParams(location.search).get('vid'));
-  if (fromUrl) remember(fromUrl);
-
-  // Хранилище — запасной путь: на него приходится полагаться, когда страницу
-  // открыли не по ссылке канала, а из меню «Поделиться».
-  var vid = fromUrl || stored();
+  function clidFor(vid) { return vid ? BASE_CLID + '-' + vid : BASE_CLID; }
 
   // Коды, для которых манифест выложен. Строку генерирует
   // tools/make-vid-manifests.py — руками не править.
@@ -65,18 +62,55 @@ window.WF = (function () {
   // откажется ставить приложение вовсе. Если кода в списке нет, остаётся
   // манифест по умолчанию, а код подхватится из хранилища — поиск уйдёт
   // с правильной меткой, потеряется только метка в start_url значка.
-  if (vid && CHANNELS.indexOf(Number(vid)) !== -1) {
+  function useManifestFor(vid) {
     var link = document.getElementById('manifest');
-    if (link) link.href = 'm/' + vid + '.webmanifest';
+    if (!link) return;
+    link.href = (vid && CHANNELS.indexOf(Number(vid)) !== -1)
+      ? 'm/' + vid + '.webmanifest'
+      : 'manifest.webmanifest';
   }
+
+  var fromUrl = normalizeVid(new URLSearchParams(location.search).get('vid'));
+  if (fromUrl) write(KEY, fromUrl);
+
+  // Хранилище — запасной путь: на него приходится полагаться, когда страницу
+  // открыли не по ссылке канала, а из меню «Поделиться» или с кодом,
+  // введённым руками.
+  var vid = fromUrl || normalizeVid(read(KEY));
+  useManifestFor(vid);
 
   return {
     vid: vid,
+    clid: clidFor(vid),
+
+    // Пришёл ли код из адреса. Если да, менять его руками не дают: при
+    // следующем запуске значка адрес всё равно подставит свой, и правка
+    // молча потеряется.
+    fromUrl: !!fromUrl,
+
     normalizeVid: normalizeVid,
-    clid: vid ? '15428440-' + vid : '15428440',
+
     searchUrl: function (query) {
       return 'https://ya.ru/search/?clid=' + this.clid + '&text=' + encodeURIComponent(query);
-    }
+    },
+
+    // Код, введённый руками, — основной путь при раздаче через магазины.
+    // В start_url уже установленного значка он не попадёт: там зашит адрес,
+    // с которого ставили, — поэтому живёт в хранилище. Если приложение ещё
+    // не установлено, манифест переключаем: тогда код уедет на домашний
+    // экран вместе со значком.
+    setVid: function (raw) {
+      var v = normalizeVid(raw);
+      this.vid = v;
+      this.clid = clidFor(v);
+      write(KEY, v);
+      useManifestFor(v);
+      return v;
+    },
+
+    // Спрашивали ли уже код. Второй раз не пристаём.
+    asked: function () { return read(ASKED) === '1'; },
+    markAsked: function () { write(ASKED, '1'); }
   };
 })();
 </script>
@@ -89,11 +123,14 @@ window.WF = (function () {
     --muted: #6b6b73;
     --line: #e3e3e8;
     --accent: #3b5bdb;
+    --ok: #1a7f4b;
+    --err: #c0392b;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #17171a; --card: #202024; --text: #ececf0;
       --muted: #9a9aa4; --line: #33333a; --accent: #7b93f5;
+      --ok: #4ac585; --err: #ef7a6d;
     }
   }
   * { box-sizing: border-box; }
@@ -157,6 +194,15 @@ window.WF = (function () {
   .install li:last-child { margin-bottom: 0; }
   .install b { color: var(--text); font-weight: 500; }
   .install button { width: 100%; padding: 12px; font-size: 15px; }
+  .install form { margin: 12px 0 0; padding: 6px; }
+  .install form button { width: auto; padding: 9px 16px; font-size: 14px; }
+  .install .skip {
+    margin-top: 10px; background: transparent; color: var(--muted);
+    border: 1px solid var(--line); font-weight: 400;
+  }
+  .install .status { margin: 10px 0 0; font-size: 13px; }
+  .install .status.ok { color: var(--ok); }
+  .install .status.err { color: var(--err); }
   .share {
     display: inline-block; width: 13px; height: 17px;
     vertical-align: -3px; margin: 0 1px; fill: currentColor;
@@ -184,6 +230,20 @@ window.WF = (function () {
   <section class="install" id="install" hidden>
     <h2 id="install-title"></h2>
     <div id="install-body"></div>
+  </section>
+
+  <!-- Ввод кода руками: основной способ привязки к каналу при раздаче через
+       магазины, где персональной ссылки не существует. -->
+  <section class="install" id="code-card" hidden>
+    <h2 id="code-title">Код подключения</h2>
+    <p id="code-hint"></p>
+    <form id="code-form" novalidate>
+      <input id="code-input" type="text" inputmode="numeric" maxlength="2"
+             autocomplete="off" placeholder="например, 7" aria-label="Код подключения">
+      <button type="submit">Сохранить</button>
+    </form>
+    <p class="status" id="code-status" hidden></p>
+    <button type="button" class="skip" id="code-skip">Пропустить</button>
   </section>
 
   <p class="foot">

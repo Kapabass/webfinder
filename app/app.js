@@ -13,14 +13,24 @@ if (shared) {
   location.replace(WF.searchUrl(shared));
 }
 
+const ua = navigator.userAgent;
+const isIOS = /iphone|ipad|ipod/i.test(ua) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isIOSSafari = isIOS && !/crios|fxios|edgios|opt\//i.test(ua);
+
+// Запущено со значка, а не из браузера.
+const installed = matchMedia('(display-mode: standalone)').matches ||
+                  navigator.standalone === true;
+
+/* ------------------------------------------------------------------ */
+/* Поиск                                                               */
+/* ------------------------------------------------------------------ */
+
 const form  = document.getElementById('form');
 const input = document.getElementById('q');
+const clid  = document.getElementById('clid');
 
-document.getElementById('clid').value = WF.clid;
-
-document.getElementById('code').textContent = WF.vid
-  ? `Код подключения: ${WF.vid} · `
-  : 'Код подключения не задан · ';
+clid.value = WF.clid;
 
 // Приложение открывают ради одного действия, так что сразу просим клавиатуру.
 // Safari такой фокус без жеста пользователя игнорирует — там это просто
@@ -29,10 +39,104 @@ input.focus({ preventScroll: true });
 
 form.addEventListener('submit', () => {
   // Отправку не перехватываем: форма сама уходит GET-запросом на ya.ru.
-  // Код канала мог появиться уже после загрузки (?vid= в адресе обработан
-  // в <head>), поэтому clid на всякий случай обновляем в момент перехода.
-  document.getElementById('clid').value = WF.clid;
+  // Код мог измениться уже после загрузки страницы — например, его только
+  // что ввели руками, — поэтому clid обновляем в момент перехода.
+  clid.value = WF.clid;
 });
+
+/* ------------------------------------------------------------------ */
+/* Подвал                                                              */
+/* ------------------------------------------------------------------ */
+
+const footer = document.getElementById('code');
+
+function renderFooter() {
+  footer.textContent = WF.vid
+    ? `Код подключения: ${WF.vid} · `
+    : 'Код подключения не задан · ';
+
+  // Когда код пришёл из адреса, менять его руками бессмысленно: при следующем
+  // запуске значка адрес подставит свой, и правка молча потеряется.
+  if (WF.fromUrl) return;
+
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = WF.vid ? 'изменить' : 'ввести код';
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    openCode(false);
+  });
+  footer.append(link, ' · ');
+}
+
+renderFooter();
+
+/* ------------------------------------------------------------------ */
+/* Ввод кода руками                                                    */
+/* ------------------------------------------------------------------ */
+// Основной способ привязки к каналу. Раздача идёт через магазины и через
+// сказанное вслух «найдите приложение и введите такой-то номер» — ссылки с
+// кодом там нет и быть не может: карточка в магазине одна на всех.
+// Ссылка с ?vid= остаётся для тех каналов, где её есть куда положить.
+
+const codeCard   = document.getElementById('code-card');
+const codeForm   = document.getElementById('code-form');
+const codeInput  = document.getElementById('code-input');
+const codeHint   = document.getElementById('code-hint');
+const codeStatus = document.getElementById('code-status');
+const codeSkip   = document.getElementById('code-skip');
+
+function openCode(first) {
+  // «Номер» — потому что вслух говорят обычно так, а не «код подключения».
+  codeHint.textContent = first
+    ? 'Если вам называли номер — введите его. Если нет, пропустите: приложение работает и без него.'
+    : 'Номер, который вам называли. Чтобы убрать его, очистите поле и сохраните.';
+  codeInput.value = WF.vid;
+  codeStatus.hidden = true;
+  codeSkip.textContent = first ? 'Пропустить' : 'Закрыть';
+  codeCard.hidden = false;
+
+  // При первом запуске клавиатуру не поднимаем: человек пришёл искать,
+  // а не заполнять форму. Открыл сам — тогда ставим курсор.
+  if (!first) codeInput.focus();
+}
+
+function say(text, isError) {
+  codeStatus.textContent = text;
+  codeStatus.className = 'status ' + (isError ? 'err' : 'ok');
+  codeStatus.hidden = false;
+}
+
+codeForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const raw = codeInput.value.trim();
+
+  // Правила те же, что на экране настроек расширения.
+  if (raw !== '' && (!/^\d{1,2}$/.test(raw) || Number(raw) === 0)) {
+    say('Код — это число от 1 до 99. Либо оставьте поле пустым.', true);
+    return;
+  }
+
+  const saved = WF.setVid(raw);
+  WF.markAsked();
+  clid.value = WF.clid;
+  codeInput.value = saved;
+  renderFooter();
+  say(saved ? `Код ${saved} сохранён.` : 'Сохранено. Приложение работает без кода.');
+  codeSkip.textContent = 'Закрыть';
+});
+
+codeSkip.addEventListener('click', () => {
+  WF.markAsked();
+  codeCard.hidden = true;
+});
+
+// Первый запуск со значка, кода нет и ещё не спрашивали — спрашиваем один раз.
+// В браузере не лезем: там это место занято приглашением установить, да и
+// значка, ради которого всё затевалось, ещё нет.
+if (installed && !shared && !WF.fromUrl && !WF.vid && !WF.asked()) {
+  openCode(true);
+}
 
 /* ------------------------------------------------------------------ */
 /* Установка на домашний экран                                         */
@@ -41,13 +145,6 @@ form.addEventListener('submit', () => {
 const card  = document.getElementById('install');
 const title = document.getElementById('install-title');
 const body  = document.getElementById('install-body');
-
-const ua = navigator.userAgent;
-const isIOS = /iphone|ipad|ipod/i.test(ua) ||
-              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const isIOSSafari = isIOS && !/crios|fxios|edgios|opt\//i.test(ua);
-const installed = matchMedia('(display-mode: standalone)').matches ||
-                  navigator.standalone === true;
 
 const SHARE_ICON =
   '<svg class="share" viewBox="0 0 13 17" aria-hidden="true">' +
