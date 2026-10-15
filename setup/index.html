@@ -8,11 +8,13 @@
   :root {
     --bg: #f7f7f8; --card: #ffffff; --text: #1a1a1c; --muted: #6b6b73;
     --line: #e3e3e8; --accent: #3b5bdb; --ok: #1a7f4b; --code: #f2f2f5;
+    --bad: #c92a2a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #17171a; --card: #202024; --text: #ececf0; --muted: #9a9aa4;
       --line: #33333a; --accent: #7b93f5; --ok: #4ac585; --code: #2a2a30;
+      --bad: #ff8787;
     }
   }
   * { box-sizing: border-box; }
@@ -24,8 +26,21 @@
   main { max-width: 680px; margin: 0 auto; }
   h1 { font-size: 27px; line-height: 1.25; margin: 0 0 10px; letter-spacing: -0.015em; }
   .lead { color: var(--muted); margin: 0 0 14px; }
-  .vid { margin: 0 0 36px; font-size: 15px; color: var(--muted); }
-  .vid b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .code {
+    background: var(--card); border: 2px solid var(--accent);
+    border-radius: 12px; padding: 20px 24px; margin: 22px 0 16px;
+  }
+  .code label { display: block; font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+  .code p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .code input {
+    width: 150px; padding: 9px 12px; font: inherit; font-size: 17px;
+    color: var(--text); background: var(--code);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  .code input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .code .msg { margin: 10px 0 0; font-size: 14px; min-height: 1.4em; }
+  .code .msg.ok  { color: var(--ok); }
+  .code .msg.bad { color: var(--bad); }
 
   .step {
     background: var(--card); border: 1px solid var(--line);
@@ -83,14 +98,24 @@
     её в настройках. Это занимает минуту и делается полностью вручную, ничего
     устанавливать не нужно.
   </p>
-  <p class="vid" id="vidline"></p>
+  <div class="code">
+    <label for="vid">Код подключения</label>
+    <p>
+      Если вам называли номер — введите его: он сразу попадёт в адрес поиска
+      ниже. Если нет, оставьте поле пустым — всё работает и без него.
+    </p>
+    <input id="vid" type="text" inputmode="numeric" maxlength="2"
+           placeholder="например, 7" autocomplete="off">
+    <p class="msg" id="vid-msg" aria-live="polite"></p>
+  </div>
 
   <div class="step">
     <h2><span>1</span> Откройте настройки поисковых систем</h2>
     <p id="settings-hint">
       Перейти туда по ссылке нельзя — внутренние страницы браузера не
-      открываются с сайтов. Скопируйте адрес, вставьте в адресную строку и
-      нажмите Enter.
+      открываются с сайтов. Скопируйте адрес, откройте новую вкладку, вставьте
+      его в адресную строку и нажмите Enter. Эту страницу не закрывайте — она
+      понадобится на следующем шаге.
     </p>
     <div class="copy">
       <code id="settings"></code>
@@ -142,7 +167,8 @@
     </p>
     <p>
       Эта страница ничего не собирает и никуда ничего не отправляет: адрес
-      собирается прямо в браузере, никакие данные никуда не уходят. Вопросы —
+      собирается прямо в браузере. Номер, если вы его ввели, хранится только
+      в этом браузере. Вопросы —
       <a href="mailto:dimya.prokhorov@gmail.com">dimya.prokhorov@gmail.com</a>
     </p>
   </div>
@@ -151,24 +177,61 @@
 <script>
   const BASE_CLID = '15428440';
 
-  // Код канала приходит в адресе: ?vid=5. Нормализуем так же, как расширение:
-  // число от 1 до 99, ведущие нули отбрасываем, 0 и пустое значение — без кода.
-  function readVid() {
-    const raw = (new URLSearchParams(location.search).get('vid') || '').trim();
-    if (!/^\d{1,2}$/.test(raw)) return '';
+  // Нормализуем так же, как расширение и приложения: число от 1 до 99,
+  // ведущие нули отбрасываем. null — ввод негодный, '' — кода нет.
+  function normalize(raw) {
+    raw = (raw || '').trim();
+    if (raw === '') return '';
+    if (!/^\d{1,2}$/.test(raw)) return null;
     const n = Number(raw);
-    return n >= 1 && n <= 99 ? String(n) : '';
+    return n >= 1 && n <= 99 ? String(n) : null;
   }
 
-  const vid  = readVid();
-  const clid = vid ? BASE_CLID + '-' + vid : BASE_CLID;
+  // Ключ свой, не wf_vid веб-приложения: у того своя логика вокруг кода
+  // из адреса, смешивать их незачем. Приватный режим может бросить на
+  // обращении к хранилищу — тогда просто живём без него.
+  const KEY = 'wf_setup_vid';
+  const store = {
+    get() { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } },
+    set(v) { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch (e) {} },
+  };
 
-  document.getElementById('url').textContent =
-    'https://ya.ru/search/?clid=' + clid + '&text=%s';
+  const field = document.getElementById('vid');
+  const msg   = document.getElementById('vid-msg');
 
-  document.getElementById('vidline').innerHTML = vid
-    ? 'Код подключения: <b>' + vid + '</b> — он уже вшит в адрес ниже.'
-    : 'Код подключения не задан — адрес ниже работает и без него.';
+  function render(vid) {
+    const clid = vid ? BASE_CLID + '-' + vid : BASE_CLID;
+    document.getElementById('url').textContent =
+      'https://ya.ru/search/?clid=' + clid + '&text=%s';
+  }
+
+  // Откуда код: ссылка канала (?vid=5) главнее сохранённого — по ней
+  // человек пришёл только что. Поле остаётся редактируемым: адрес копируют
+  // один раз, и исправить опечатку в номере должно быть можно.
+  const fromUrl = normalize(new URLSearchParams(location.search).get('vid'));
+  const initial = fromUrl || store.get();
+  field.value = initial;
+  if (fromUrl) store.set(fromUrl);
+  render(initial);
+  if (initial) {
+    msg.textContent = 'Номер ' + initial + ' уже в адресе поиска ниже.';
+    msg.className = 'msg ok';
+  }
+
+  field.addEventListener('input', () => {
+    const vid = normalize(field.value);
+    if (vid === null) {
+      // Негодный ввод — адрес без кода, а не с мусором.
+      render('');
+      msg.textContent = 'Код — это число от 1 до 99. Либо оставьте поле пустым.';
+      msg.className = 'msg bad';
+      return;
+    }
+    store.set(vid);
+    render(vid);
+    msg.textContent = vid ? 'Номер ' + vid + ' уже в адресе поиска ниже.' : '';
+    msg.className = vid ? 'msg ok' : 'msg';
+  });
 
   // Путь к настройкам у каждого браузера свой, а определить браузер можно
   // только по userAgent: порядок проверок важен, Яндекс.Браузер и Opera
